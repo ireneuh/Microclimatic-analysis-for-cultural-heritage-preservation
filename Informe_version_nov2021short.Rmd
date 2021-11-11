@@ -1,0 +1,605 @@
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#########################################################################################
+
+##Title: Aplicación del lenguaje de programacion R al analisis de datos microclimaticos para Conservación Preventiva
+##Authors: Irene Ureña & Hector Bolivar
+##Journal: Ciencia y Arte 
+##
+##This is the complete R script used to generate the microclimatic analysis for cultural heritage preservation purposes using data-logger record shown in the manuscript.
+##
+##CONTACT PERSON: hector.bolivar@cultura.gob.es
+
+#########################################################################################
+#This is an R Markdown document
+#output: html_document
+#When you click the **Knit** button a document will be generated that includes both content and the output of the embedded R code chunks within the document.
+```
+---
+title: "Informe de sensor"
+author: "Ureña, I. y Bolívar, H."
+date: '`r format(Sys.Date(), "%d %B, %Y")`'
+output:
+  html_document:
+    keep_md: true
+---
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+rm(list=ls())
+gc()
+setwd="D:/Irene/Mis Documentos/R/CienciayArte/"
+library(readxl)
+library(stringi)
+library(dplyr)
+library(tidyr)
+library(psych)
+library(knitr)
+library(kableExtra)
+library(gridExtra)
+library(ggplot2)
+library(scales)
+library(ggpubr)
+
+#####DATOS SOBRE EL SENSOR
+datos_brutos_informe <- read_excel("Informe_Tabla_anual_cc.xls", 
+                                     range="A1:F7", col_names = FALSE)
+datos_brutos_informe <-read_excel("Informe_Tabla_anual_cc.xls")
+
+
+nombresensor <- stri_replace_all_fixed(datos_brutos_informe[1,1], "Nombre del instrumento: ", "")
+numerodeserie <- datos_brutos_informe[6,1]
+diadescarga <- datos_brutos_informe[1,4]
+
+#####DATOS DEL SENSOR
+datos_brutos <- read_excel("Informe_Tabla_anual_cc.XLS", 
+                          skip=11)
+#se crea una copia de datos brutos sobre la que trabajaremos
+db <- datos_brutos
+##Se prepara el formato del excel
+names(db)[3]<-"HR"#cambiar nombre de la columna 3
+names(db)[4]<-"T"#cambiar nombre de la columna 4
+#duplicar la columna de fecha y hora
+db$`Fecha-Hora2` <- db$`Fecha-Hora`
+db <- db [ , c(1,2,5,3,4)]
+#dividir columna fecha-hora2 en columna de fecha y columna de hora
+db <- separate (db,"Fecha-Hora2", c("Fecha", "Hora"), sep="\\s")
+#cambiar formato de la columna fecha
+db$Fecha <- as.Date(db$Fecha, format="%d/%m/%Y")
+#cambiar formato de la columna fecha-hora
+db$"Fecha-Hora" <- as.POSIXlt(db$"Fecha-Hora", format="%d/%m/%Y %H:%M:%S")
+
+#####EXPLORAR LOS DATOS GLOBALES
+#n? de registros
+head(db)
+nrow(db)#n? de filas
+nrow(db[duplicated(db), ])#n de lineas duplicadas
+#db[!duplicated(db), ] #para eliminar duplicados
+summary(duplicated(db$id))#algun id duplicado?
+summary(duplicated(db$"Fecha-Hora"))#algun valor de Fecha-Hora duplicado?
+which(duplicated(db$"Fecha-Hora"))#cuales son
+#db[duplicated(db$"Fecha-Hora"), ] #Seleccionar duplicados de un dataframe
+
+#num de datos tomados (id)
+n_idg <- nrow(db)
+
+#ver si hay algun valor que no se haya tomado
+na_HR <- sum(is.na(db$HR))
+na_T <- sum(is.na(db$T))
+
+#intervalo de fechas
+iniciodias <- min(db$"Fecha-Hora")
+iniciodias <- format(iniciodias,'%d/%m/%Y %H:%M:%S')
+
+findias <- max(db$"Fecha-Hora")
+findias <- format(findias,'%d/%m/%Y %H:%M:%S')
+
+#Resumen de informacion
+datostotales <- n_idg
+iniciodias#date1_dg
+findias#date2_dg
+diastotales <- round(as.numeric(difftime(findias,iniciodias), units="days"), digits=0)
+nerroresT <- na_T
+nerroresHR <- na_HR
+
+```
+
+### Datos del sensor  
+Nombre del sensor: `r nombresensor` 
+
+Número de serie: `r numerodeserie`  
+
+Fecha de inicio de toma de datos: `r iniciodias`  
+
+Fecha de fin de la toma de datos: `r findias`  
+
+Número de días totales: `r diastotales` dias  
+
+Número total de datos tomados: `r datostotales`  
+
+Número de errores de datos de temperatura: `r nerroresT`
+
+Número de errores de datos de humedad relativa: `r nerroresHR`  
+
+Los datos se descargaron el día `r diadescarga`
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+#####ANALISIS ESTADISTICO GLOBAL DEL LOS DATOS
+
+#HR
+HRg<-describe(db$HR ,skew=FALSE,ranges=T, interp=F,quant=c(0.023,0.5,0.977))
+HRg <- print(HRg, digits=1)#redondeo con un decimal porque la precision del aparato es 0.1
+HRg[1,1]<-"%HR global"
+#T
+Tg<-describe(db$T ,skew=FALSE,ranges=T, interp=F,quant=c(0.023,0.5,0.977))
+Tg <- print(Tg, digits=1)#redondeo con decimal porque la precision del aparato es 0.1
+Tg[1,1]<-"T ºC global"
+r<-rbind(Tg, HRg)
+
+names(r)<- c("Variable","n","Media","SD","Min","Max","OA","se","P0.023","P0.5","P0.977")
+
+
+###Calcular maxima oscilación diaria y máxima oscilación horaria
+
+###maxima oscilacion diaria MOD
+
+lufday <- length(unique(format(db$"Fecha-Hora",'%d/%m/%Y')))#calculo num de días únicos
+
+OD <- data.frame(1:lufday,2,3) 
+#OD <- array(,dim=c(lufday,3)) #creo vector de 3 columnas
+OD[,1]<-unique(format(db$"Fecha-Hora",'%d/%m/%Y')) #relleno primera columna con dias
+colnames(OD)<-c("día","OD-HR", "OD-T") #cambio nombre de las columnas
+
+#se crea un bucle, para cada dia, se crea una submatriz donde se calculan los max y min
+for (n in (1:lufday)){
+  
+  subOD <- db[format(db$"Fecha-Hora",'%d/%m/%Y')==OD[n,1],]
+  OD[n,2] <- (max(subOD$HR)- min(subOD$HR))
+  OD[n,3] <- (max(subOD$T)- min(subOD$T))
+}
+#calcular el día con la maxima OD
+MOD_HR <- max(OD$"OD-HR", na.rm = TRUE)
+MOD_HRday <- OD[which(OD$"OD-HR"==max(OD$"OD-HR", na.rm = TRUE)),1]
+MOD_T <- max(OD$"OD-T", na.rm = TRUE)
+MOD_Tday <- OD[which(OD$"OD-T"==max(OD$"OD-T", na.rm = TRUE)),1]
+
+###maxima oscilacion horaria MOH
+
+lufhora <- length((format(db$"Fecha-Hora",'%d/%m/%Y %H')))#calculo num de horas (no unicas xq hay un cambio horario y una hora está repetida)
+
+OH <- data.frame(1:lufhora,2,3) 
+OH[,1]<-(format(db$"Fecha-Hora",'%d/%m/%Y %H')) #relleno primera columna con dias y horas
+colnames(OH)<-c("día-hora","OH-HR", "OH-T") #cambio nombre de las columnas
+
+#se crea un bucle, para cada hora, se crea una submatriz donde se calculan los max y min
+for (n in (1:lufhora)){
+ if (n==1) {
+    OH[n,2] <- 0
+    OH[n,3] <- 0
+  }
+  if (n>1) {
+        OH[n,2] <- abs(db [n,5]-db [n-1,5])
+        OH[n,3] <- abs(db [n,6]-db [n-1,6])
+  }}
+MOH_HR <- max(OH$`OH-HR`, na.rm = TRUE)
+MOH_HRhora <- OH[which(OH$"OH-HR"==max(OH$"OH-HR", na.rm = TRUE)),1]
+MOH_T <- max(OH$`OH-T`, na.rm = TRUE)
+MOH_Thora <- OH[which(OH$"OH-T"==max(OH$"OH-T", na.rm = TRUE)),1]
+
+```
+
+### Análisis global de las variables
+
+#### Tabla resumen:
+`r kable(r, caption="Tabla Análisis Global Temperatura (ºC) y Humedad Relativa (%)",format="html",booktabs=T) %>%
+kable_styling() %>%
+add_footnote (c("SD = Desviación típica","OA = Oscilación absoluta","se = Error estándar","P = Percentiles", "El 95% de los datos se encuentra entre el percentil 0.023 y el 0.977"), notation="none")`
+
+#### Evolución temporal de las variables
+```{r Global_Graficos, echo=FALSE, fig.height=4, fig.show='asis', fig.width=12, message=FALSE, warning=FALSE, dpi=300}
+#echo=F xa que imprima solo figuras
+#fig.height y width= altura y ancho en pulgadas
+#fig.show=muestra figura tal como la lee R
+#mess y warning sin imprimir
+#dpi=resolucion
+
+#####GRÁFICAS GLOBALES
+
+###CURVA HR Y T
+db2 <- db
+db2$"Fecha-Hora" <- as.POSIXct(db$"Fecha-Hora", format="%d/%m/%Y %H:%M:%S") 
+#db$"Fecha-Hora" <- as.Date(db$"Fecha-Hora", format="%d/%m/%Y %H:%M:%S") 
+#db2T <- db2[db2$id<5000, ]
+db2T <- db2
+
+p <- ggplot(db2T, aes(x = `Fecha-Hora`))
+p <- p + geom_point(aes(y = T, colour = "Temperatura"), alpha = 0.2, size=0.75)
+p <- p + geom_point(aes(y = HR/2, colour = "Humedad relativa"), alpha = 0.2, size=0.75)
+p <- p + stat_smooth(aes(y = T, colour = "Temperatura"),  se = FALSE, size=0.75)
+p <- p + stat_smooth(aes(y = HR/2, colour = "Humedad relativa"), se = FALSE, size=0.75)
+p <- p + scale_y_continuous(limits=c(0,50), sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,10)), breaks=seq(0,50,5))
+
+p <- p + scale_x_datetime(limits=c(min(db2T$"Fecha-Hora"),max(db2T$"Fecha-Hora")), expand = c(0, 0), date_labels= "%d %b %y", date_breaks="10 day")
+
+# modifying colours and theme options
+p <- p +scale_colour_manual(values=c("cornflowerblue","red3"))#values will be matched in order (usually alphabetical)
+p <- p + labs(y = "T (°C)",
+              x = "Fecha",
+              colour = "Magnitud",
+              size=1)
+p <- p + theme_bw() #theme_classic()
+p <- p + theme(legend.position = "top") 
+
+#añadir titulo                  
+p<-p+labs(title="Evolución temporal de Temperatura y Humedad Relativa")
+p<- p + theme(
+        plot.title = element_text(family="sans", face="plain", color="black", size=12),
+        axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+        axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+        axis.text= element_text(size=8),
+        axis.text.x=element_text(angle=45, vjust=0.7))
+p
+
+```
+
+<P style="page-break-before: always">
+#### Histogramas y diagramas de caja de las variables
+```{r Global_Histograma_Box, echo=FALSE, fig.height=4, fig.show='asis', fig.width=12, message=FALSE, warning=FALSE, dpi=300}
+###HISTOGRAMAS
+histHR<- ggplot(db, aes(x=HR)) + 
+  geom_histogram(binwidth=2.5, color="black", fill="cornflowerblue")+
+  theme_bw()+
+  labs(y = "Frecuencia",
+        x = "% HR",
+        size=1,
+       title="Histograma HR")+
+ scale_x_continuous(breaks=seq(0,100,10))+
+  theme(
+        plot.title = element_text(family="sans", face="plain", color="black", size=12),
+        axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+        axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+        axis.text= element_text(size=8),
+        axis.text.x=element_text(angle=0, vjust=0.7))
+
+histT<- ggplot(db, aes(x=T)) + 
+  geom_histogram(binwidth=1, color="black", fill="red3")+
+  theme_bw()+
+  labs(y = "Frecuencia",
+        x = "T ºC",
+        size=1,
+       title="Histograma T")+
+ scale_x_continuous(breaks=seq(0,50,5))+
+  theme(
+        plot.title = element_text(family="sans", face="plain", color="black", size=12),
+        axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+        axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+        axis.text= element_text(size=8),
+        axis.text.x=element_text(angle=0, vjust=0.7))
+
+grid.arrange(histHR, histT, ncol=2)
+
+###BOXPLOT
+bHR <- ggplot(db, aes(y=HR)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="cornflowerblue")+
+  labs(y = "%",x = "Humedad Relativa", title="Diagrama de cajas de HR")+
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+bT <- ggplot(db, aes(y=T)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="red3")+
+  labs(y = "ºC",x = "Temperatura", title="Diagrama de cajas de Temperatura") + 
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+grid.arrange(bHR, bT, ncol=2)
+```
+
+#### Oscilaciones globales
+
+##### Oscilación máxima diaria
+
+Máxima oscilación diaria para la Humedad relativa: `r MOD_HR`% el día `r MOD_HRday`.
+
+Máxima oscilación diaria para la Temperatura: `r MOD_T`ºC el día `r MOD_Tday`.
+
+##### Oscilación máxima horaria
+
+Máxima oscilación horaria para la Humedad relativa: `r MOH_HR`% el día `r MOH_HRhora` horas.
+
+Máxima oscilación horaria para la Temperatura: `r MOH_T`ºC el día `r MOH_Thora` horas.
+
+##### Diagramas de caja de los valores absolutos de las oscilaciones diarias y horarias 
+
+```{r Oscilaciones_Graficos, echo=FALSE, fig.height=4, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE, dpi=300}
+
+###BOXPLOTS OMD
+
+b_OMDHR <- ggplot(OD, aes(y=OD$`OD-HR`)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="cornflowerblue")+
+  geom_hline(yintercept=10, color = "red") + #Oscilaciones sup. al 10% en 24h son graves
+  labs(y = "%",x = "Humedad Relativa", title="Oscilación diaria de HR")+
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+b_OMDT <- ggplot(OD, aes(y=OD$`OD-T`)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="red3")+
+  geom_hline(yintercept=5, color="red") + #Oscilaciones sup. a 5ºC son graves
+  labs(y = "ºC",x = "Temperatura", title="Oscilación diaria de T") + 
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+###BOXPLOTS OMH
+
+b_OMHHR <- ggplot(OH, aes(y=OH$`OH-HR`)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="cornflowerblue")+
+  geom_hline(yintercept=5, color="red") + #Oscilaciones sup. a 5% a la hora son graves
+  labs(y = "%",x = "Humedad Relativa", title="Oscilación horaria de HR")+
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+b_OMHT <- ggplot(OH, aes(y=OH$`OH-T`)) +
+  stat_boxplot(geom= "errorbar", width= 0.2) + 
+  geom_boxplot(fill="red3")+
+  geom_hline(yintercept=2, color="red") + #Oscilaciones sup. a 2ºC a la hora son graves
+  labs(y = "ºC",x = "Temperatura", title="Oscilación horaria de T") + 
+  theme_bw()+
+  theme(
+  axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=0),
+  axis.text.x=element_blank(),
+  axis.ticks.x=element_blank())
+
+grid.arrange(b_OMDHR, b_OMDT, b_OMHHR, b_OMHT, ncol=4)
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=TRUE}
+###ANÁLISIS PARA CADA AÑO Y CADA MES
+
+dbcl <- na.omit(db) # Necesitamos eliminar las NA del dataframe
+
+#Tabla resumen de los datos de HR y T de cada año
+db_a <- dbcl %>% group_by(format(dbcl$"Fecha-Hora",'%Y')) %>% summarize(n(), "Nº Días"=n()/24, "Media HR" = mean(HR), "Mediana HR" = median(HR), "SD HR" = sd(HR), "Min HR" =min(HR), "Max HR" = max(HR), "OAA HR" = (max(HR)-min(HR)), "Media T" = mean(T), "Mediana T" = median(T), "SD T" = sd(T), "Min T" =min(T), "Max T" = max(T), "OAA T" = (max(T)-min(T)))
+names(db_a)[1]<-"Año" #cambiar nombre de la columna 1
+db_a <- rapply(object = db_a, f = round, classes = "numeric", how = "replace", digits = 1)
+db_a$`Nº Días` <- round(as.numeric(db_a$`Nº Días`),0)
+
+#Tabla resumen de los datos de HR y T de cada mes
+db_m <- dbcl %>% group_by(format(dbcl$"Fecha-Hora",'%Y_%m')) %>% summarize(n(), "Nº Días"=n()/24, "Media HR" = mean(HR), "Mediana HR" = median(HR), "SD HR" = sd(HR), "Min HR" =min(HR), "Max HR" = max(HR), "OAM HR" = (max(HR)-min(HR)), "Media T" = mean(T), "Mediana T" = median(T), "SD T" = sd(T), "Min T" =min(T), "Max T" = max(T), "OAM T" = (max(T)-min(T)))
+names(db_m)[1]<-"Mes" #cambiar nombre de la columna 1
+db_m <- rapply(object = db_m, f = round, classes = "numeric", how = "replace", digits = 1)
+db_m$`Nº Días` <- round(as.numeric(db_m$`Nº Días`),0)
+```
+
+<P style="page-break-before: always">
+### Análisis anual de las variables
+
+#### Tabla resumen:
+`r kable(db_a, caption="Tabla Análisis Anual Temperatura (ºC) y Humedad Relativa (%)",format="html",booktabs=T) %>%
+kable_styling() %>%
+add_footnote (c("SD = Desviación típica","OAA = Oscilación absoluta anual"), notation="none")`
+
+### Análisis mensual de las variables
+
+#### Tabla resumen:
+`r kable(db_m, caption="Tabla Análisis Mensual Temperatura (ºC) y Humedad Relativa (%)",format="html",booktabs=T) %>%
+kable_styling() %>%
+add_footnote (c("SD = Desviación típica","OAM = Oscilación absoluta mensual"), notation="none")`
+
+<P style="page-break-before: always">
+#### Evolución temporal de las variables: gráficas mensuales
+```{r Mensual_Graficos, echo=FALSE, fig.height=4, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE, dpi=300}
+
+#GRAFICAS MENSUALES
+db4 <- db
+db4$"Fecha-Hora" <- as.POSIXct(db4$"Fecha-Hora", format="%d/%m/%Y %H:%M:%S")
+db4$"mes" <- format(db4$"Fecha-Hora",'%Y, %m - %B')
+listaMeses <- unique(db4$mes)
+
+for (i in seq_along(listaMeses)){
+
+gdb4 <- ggplot(subset(db4, db4$mes==listaMeses[i]), aes(x = `Fecha-Hora`)) +
+    geom_line(aes(y = T, colour = "Temperatura"), size=0.75) +
+    geom_line(aes(y = HR/2, colour = "Humedad relativa"), size=0.75) +
+    scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,5)), breaks=seq(0,50,2)) + 
+    scale_x_datetime(expand = c(0, 0), date_labels= "%d %b %y", date_breaks="1 day") +
+    scale_colour_manual(values=c("cornflowerblue","red3")) +
+    labs(y = "T (°C)", x = "Fecha", colour = "Magnitud", size=1) +
+    ggtitle(paste("Año", listaMeses[i])) +
+    theme_bw() +
+    theme(legend.position = "top") + 
+    theme(
+        plot.title = element_text(family="sans", face="plain", color="black", size=12),
+        axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+        axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+        axis.text=element_text(size=8, hjust=0.8, vjust=0.6),
+        axis.text.x=element_text(angle=45, vjust=0.7))
+
+print(gdb4)
+}
+
+```
+
+
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+###Calcular maxima oscilación diaria y máxima oscilación horaria para cada mes
+
+###maxima oscilacion diaria según meses MODm
+
+OD_m <- na.omit(OD) #Creamos el dataframe OD_m a partir de OD sin NA
+OD_m$día <- as.POSIXct(OD_m$día, format="%d/%m/%Y")
+OD_m$mes <- format(OD_m$día, "%Y_%m")
+
+#Tabla resumen de la oscilacion diaria según meses
+OD_m_t <- OD_m %>% group_by(OD_m$mes) %>% summarize("Nº Días"=n(), "OD Media HR" = mean(`OD-HR`), "OD Mediana HR" = median(`OD-HR`), "SD OD HR" = sd(`OD-HR`),  "OD Max HR" = max(`OD-HR`), "Fecha OD Max HR" = día[which.max(`OD-HR`)], "OD Media T" = mean(`OD-T`), "OD Mediana T" = median(`OD-T`), "SD OD T" = sd(`OD-T`), "OD Max T" = max(`OD-T`),"Fecha OD Max T" = día[which.max(`OD-T`)])
+names(OD_m_t)[1]<-"Mes" #cambiar nombre de la columna 1
+OD_m_t <- rapply(object = OD_m_t, f = round, classes = "numeric", how = "replace", digits = 1)
+OD_m_t$`Fecha OD Max HR` <- as.character(OD_m_t$`Fecha OD Max HR`, format="%d/%m/%Y")
+OD_m_t$`Fecha OD Max T` <- as.character(OD_m_t$`Fecha OD Max T`, format="%d/%m/%Y")
+
+###maxima oscilacion horaria según meses MOHm
+
+OH_m <- na.omit(OH) #Creamos el dataframe OH_m a partir de OH sin NA
+OH_m$`día-hora` <- as.POSIXlt(OH_m$día, format="%d/%m/%Y %H")
+OH_m$mes <- format(OH_m$`día-hora`, "%Y_%m")
+
+#Tabla resumen de la oscilacion horaria según meses
+OH_m_t <- OH_m %>% group_by(OH_m$mes) %>% summarize("Nº Días"=n()/24, "OH Media HR" = mean(`OH-HR`), "OH Mediana HR" = median(`OH-HR`), "SD OH HR" = sd(`OH-HR`),  "OH Max HR" = max(`OH-HR`), "Fecha y hora OH Max HR" = `día-hora`[which.max(`OH-HR`)], "OH Media T" = mean(`OH-T`), "OH Mediana T" = median(`OH-T`), "SD OH T" = sd(`OH-T`), "OH Max T" = max(`OH-T`),"Fecha y hora OH Max T" = `día-hora`[which.max(`OH-T`)])
+names(OH_m_t)[1]<-"Mes" #cambiar nombre de la columna 1
+OH_m_t <- rapply(object = OH_m_t, f = round, classes = "numeric", how = "replace", digits = 1)
+OH_m_t$`Nº Días` <- round(as.numeric(OH_m_t$`Nº Días`),0)
+OH_m_t$`Fecha y hora OH Max HR` <- as.character(OH_m_t$`Fecha y hora OH Max HR`, format="%d/%m/%Y - %H")
+OH_m_t$`Fecha y hora OH Max T` <- as.character(OH_m_t$`Fecha y hora OH Max T`, format="%d/%m/%Y - %H")
+
+```
+
+<P style="page-break-before: always">
+#### Oscilaciones diarias y horarias de cada mes
+##### Oscilación máxima diaria para cada mes
+
+`r kable(OD_m_t, caption="Tabla de oscilaciones diarias de Temperatura (ºC) y Humedad Relativa (%) según meses",format="html",booktabs=T) %>%
+kable_styling() %>%
+add_footnote (c("OD = Oscilación diaria", "SD = Desviación estándar"), notation="none")`
+
+<P style="page-break-before: always">
+##### Oscilación máxima horaria para cada mes
+
+`r kable(OH_m_t, caption="Tabla de oscilaciones horarias de Temperatura (ºC) y Humedad Relativa (%) según meses",format="html",booktabs=T) %>%
+kable_styling() %>%
+add_footnote (c("OH = Oscilación horaria", "SD = Desviación estándar"), notation="none")`
+
+<P style="page-break-before: always">
+### Análisis estacional
+#### Modelización de un día típico de cada estación
+Promedio de valores horarios de los meses de enero, abril, julio y octubre.
+
+```{r Grafico_estacional, echo=FALSE, fig.height=5, fig.width=12, message=FALSE, warning=FALSE, paged.print=FALSE}
+dbe <- na.omit(db)
+dbe$mes <- format(dbe$`Fecha-Hora`, "%m")
+dbe$Hora <- NULL
+dbe$hora <- format(dbe$`Fecha-Hora`, "%H")
+
+#enero
+ene <- filter(dbe, mes == "01")
+ene$hora <- as.numeric(ene$hora)
+
+#Gráfica de enero
+g_ene <- ggplot((ene), aes(x = `hora`), group=1) +
+  geom_point(aes(y = `T`, colour = "Temperatura"), alpha = 0.2, size=0.75) +
+  geom_point(aes(y = `HR`/2, colour = "Humedad relativa"), alpha = 0.2, size=0.75) +
+  stat_smooth(aes(y = T, colour = "Temperatura"),  se = FALSE, size=0.75) +
+  stat_smooth(aes(y = HR /2, colour = "Humedad relativa"), se = FALSE, size=0.75) +
+  #scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,5)), breaks=seq(0,50,2)) + 
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)"), limits = c(10,35)) + 
+  scale_x_continuous(expand = c(0, 1), breaks = c(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24)) +
+  scale_colour_manual(values=c("cornflowerblue","red3")) +
+  labs(y = "T (°C)", x = "Hora", colour = "Magnitud", size=0.5) +
+  theme_bw() +
+  ggtitle("Día promedio de invierno (enero)") +
+  theme(legend.position = "bottom") + 
+  theme(
+    plot.title = element_text(family="sans", face="plain", color="black", size=12),
+    axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+    axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+    axis.text=element_text(size=8, hjust=0.8, vjust=0.6),
+    axis.text.x=element_text(size=8, hjust=0.5, vjust=0.5))
+
+#abril
+abr <- filter(dbe, mes == "04")
+abr$hora <- as.numeric(abr$hora)
+
+#Gráfica de abril
+g_abr <- ggplot((abr), aes(x = `hora`), group=1) +
+  geom_point(aes(y = `T`, colour = "Temperatura"), alpha = 0.2, size=0.75) +
+  geom_point(aes(y = `HR`/2, colour = "Humedad relativa"), alpha = 0.2, size=0.75) +
+  stat_smooth(aes(y = T, colour = "Temperatura"),  se = FALSE, size=0.75) +
+  stat_smooth(aes(y = HR /2, colour = "Humedad relativa"), se = FALSE, size=0.75) +
+  #scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,5)), breaks=seq(0,50,2)) + 
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)"), limits = c(10,35)) + 
+  scale_x_continuous(expand = c(0, 1), breaks = c(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24)) +
+  scale_colour_manual(values=c("cornflowerblue","red3")) +
+  labs(y = "T (°C)", x = "Hora", colour = "Magnitud", size=1) +
+  theme_bw() +
+  ggtitle("Día promedio de primavera (abril)") +
+  theme(legend.position = "bottom") + 
+  theme(
+    plot.title = element_text(family="sans", face="plain", color="black", size=12),
+    axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+    axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+    axis.text=element_text(size=8, hjust=0.8, vjust=0.6),
+    axis.text.x=element_text(size=8, hjust=0.5, vjust=0.5))
+
+#julio
+jul <- filter(dbe, mes == "07")
+jul$hora <- as.numeric(jul$hora)
+
+#Gráfica de julio
+g_jul <- ggplot((jul), aes(x = `hora`), group=1) +
+  geom_point(aes(y = `T`, colour = "Temperatura"), alpha = 0.2, size=0.75) +
+  geom_point(aes(y = `HR`/2, colour = "Humedad relativa"), alpha = 0.2, size=0.75) +
+  stat_smooth(aes(y = T, colour = "Temperatura"),  se = FALSE, size=0.75) +
+  stat_smooth(aes(y = HR /2, colour = "Humedad relativa"), se = FALSE, size=0.75) +
+  #scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,5)), breaks=seq(0,50,2)) + 
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)"), limits = c(10,35)) + 
+  scale_x_continuous(expand = c(0, 1), breaks = c(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24)) +
+  scale_colour_manual(values=c("cornflowerblue","red3")) +
+  labs(y = "T (°C)", x = "Hora", colour = "Magnitud", size=1) +
+  theme_bw() +
+  ggtitle("Día promedio de verano (julio)") +
+  theme(legend.position = "bottom") + 
+  theme(
+    plot.title = element_text(family="sans", face="plain", color="black", size=12),
+    axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+    axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+    axis.text=element_text(size=8, hjust=0.8, vjust=0.6),
+    axis.text.x=element_text(size=8, hjust=0.5, vjust=0.5))
+
+#octubre
+oct <- filter(dbe, mes == "10")
+oct$hora <- as.numeric(oct$hora)
+
+#Gráfica de octubre
+g_oct <- ggplot((oct), aes(x = `hora`), group=1) +
+  geom_point(aes(y = `T`, colour = "Temperatura"), alpha = 0.2, size=0.75) +
+  geom_point(aes(y = `HR`/2, colour = "Humedad relativa"), alpha = 0.2, size=0.75) +
+  stat_smooth(aes(y = T, colour = "Temperatura"),  se = FALSE, size=0.75) +
+  stat_smooth(aes(y = HR /2, colour = "Humedad relativa"), se = FALSE, size=0.75) +
+  #scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)", breaks=seq(0,100,5)), breaks=seq(0,50,2)) + 
+  scale_y_continuous(sec.axis = sec_axis(~.*2, name = "HR (%)"), limits = c(10,35)) + 
+  scale_x_continuous(expand = c(0, 1), breaks = c(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24)) +
+  scale_colour_manual(values=c("cornflowerblue","red3")) +
+  labs(y = "T (°C)", x = "Hora", colour = "Magnitud", size=1) +
+  theme_bw() +
+  ggtitle("Día promedio de otoño (octubre)") +
+  theme(legend.position = "bottom") + 
+  theme(
+    plot.title = element_text(family="sans", face="plain", color="black", size=12),
+    axis.title.x = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1),
+    axis.title.y = element_text(family="sans", face="plain", color="black", size=10, hjust=0.5, vjust=1, angle=90),
+    axis.text=element_text(size=8, hjust=0.8, vjust=0.6),
+    axis.text.x=element_text(size=8, hjust=0.5, vjust=0.5))
+
+ggarrange(g_ene, g_abr, g_jul, g_oct, ncol=4, common.legend = TRUE, legend="bottom")
+```
+
+
+#### Fin del informe
