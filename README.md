@@ -1,9 +1,11 @@
 # Microclimatic-analysis-for-cultural-heritage-preservation
-Microclimatic analysis for cultural heritage preservation purposes using data-logger record
+Microclimatic analysis for cultural heritage preservation purposes using data-logger record.
 
 This is the R script used to generate the complete microclimatic analysis for cultural heritage preservation purposes using data-logger record shown in the manuscript:
 
-Ureña, I. and Bolívar, H. (2022). Aplicación del lenguaje de programación R al análisis de datos microclimáticos para Conservación Preventiva. Ciencia y Arte VIII. Ministerio de Cultura y Deporte.
+Ureña, I. and Bolívar, H. (2022). Aplicación del lenguaje de programación R al análisis de datos microclimáticos para Conservación Preventiva. Ciencia y Arte VIII. Ministerio de Cultura y Deporte. pp: 91-103.
+
+You can find the book (free) in this url: https://www.libreria.culturaydeporte.gob.es/search/?q=Ciencia+y+Arte+VIII
 
 This repository consists of the script “analisis_microclimatico.Rmd” and a document generated as example in html and pdf format.
 
