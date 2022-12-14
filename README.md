@@ -5,7 +5,11 @@ This is the R script used to generate the complete microclimatic analysis for cu
 
 Ureña, I. and Bolívar, H. (2022). Aplicación del lenguaje de programación R al análisis de datos microclimáticos para Conservación Preventiva. Ciencia y Arte VIII. Ministerio de Cultura y Deporte. pp: 91-103.
 
-You can find the book (free) in this url: https://www.libreria.culturaydeporte.gob.es/search/?q=Ciencia+y+Arte+VIII
+You can find the book (free) in this url:
+https://www.libreria.culturaydeporte.gob.es/search/?q=Ciencia+y+Arte+VIII
+
+Or only the manuscript pages in this url:
+https://www.researchgate.net/publication/365872915_Aplicacion_del_lenguaje_de_programacion_R_al_analisis_de_datos_microclimaticos_para_conservacion_preventiva
 
 This repository consists of the script “analisis_microclimatico.Rmd” and a document generated as example in html and pdf format.
 
