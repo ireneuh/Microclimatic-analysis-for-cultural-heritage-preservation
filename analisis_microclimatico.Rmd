@@ -29,7 +29,7 @@ output:
 rm(list=ls())
 gc()
 #setwd <- "D:/path/to/the/working directory/"
-setwd <- "H:\2021 - Artículo R"
+setwd <- "D:/Escritorio/Datos_ejemplo"
 
 library(readxl)
 library(stringi)
@@ -44,14 +44,14 @@ library(scales)
 library(ggpubr)
 
 #####DATOS SOBRE EL SENSOR - EQUIPO
-datos_brutos_informe <- read_excel("datos_sensor.xls", 
+datos_brutos_informe <- read_excel("D:/Escritorio/Datos_ejemplo/datos_sensor.xls", 
                                      range="A1:F7", col_names = FALSE)
 nombresensor <- stri_replace_all_fixed(datos_brutos_informe[1,1], "Nombre del instrumento: ", "")
 numerodeserie <- datos_brutos_informe[6,1]
 diadescarga <- datos_brutos_informe[1,4]
 
 #####DATOS DEL SENSOR - MEDICIONES
-db <- read_excel("datos_sensor.XLS", skip=11) #crear el objeto de datos brutos sobre el que trabajar
+db <- read_excel("D:/Escritorio/Datos_ejemplo/datos_sensor.xls", skip=11) #crear el objeto de datos brutos sobre el que trabajar
 #Modificar la tabla para su uso posterior
 names(db)[3] <- "HR" #cambiar nombre de la columna 3
 names(db)[4] <- "T"  #cambiar nombre de la columna 4
@@ -110,11 +110,11 @@ Los datos se descargaron el día `r diadescarga`
 ```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 #####ANALISIS ESTADISTICO GLOBAL DEL LOS DATOS
 #HR
-HRg <- describe(db$HR ,skew=FALSE,ranges=T, interp=F,quant=c(0.023,0.5,0.977))
+HRg <- describe(db$HR ,ranges=T, interp=F,skew=F, quant=c(0.023,0.5,0.977))
 HRg <- print(HRg, digits=1) #redondear con un decimal porque la precision del aparato es 0.1
 HRg[1,1] <- "%HR global"
 #T
-Tg <- describe(db$T ,skew=FALSE,ranges=T, interp=F,quant=c(0.023,0.5,0.977))
+Tg <- describe(db$T ,ranges=T, interp=F,skew=F, quant=c(0.023,0.5,0.977))
 Tg <- print(Tg, digits=1) #redondear con un decimal porque la precision del aparato es 0.1
 Tg[1,1] <- "T ºC global"
 tabla_db <- rbind(Tg, HRg)
@@ -163,7 +163,7 @@ MOH_Thora <- OH[which(OH$"OH-T"==max(OH$"OH-T", na.rm = TRUE)),1]
 ### Análisis global de las variables
 
 #### Tabla resumen:
-`r kable(tabla_db, caption="Tabla Análisis Global Temperatura (ºC) y Humedad Relativa (%)",format="html",booktabs=T) %>%
+`r kable(tabla_db, row.name=F, caption="Tabla Análisis Global Temperatura (ºC) y Humedad Relativa (%)",format="html",booktabs=T) %>%
 kable_styling() %>%
 add_footnote (c("SD = Desviación típica","OA = Oscilación absoluta","se = Error estándar","P = Percentiles", "El 95% de los datos se encuentra entre el percentil 0.023 y el 0.977"), notation="none")`
 
@@ -418,8 +418,9 @@ OD_m_t$`Fecha OD Max T` <- as.character(OD_m_t$`Fecha OD Max T`, format="%d/%m/%
 
 ###Maxima oscilacion horaria para cada mes MOHm
 OH_m <- na.omit(OH) #Creamos el dataframe OH_m a partir de OH sin NA
-OH_m$`dia-hora` <- as.POSIXlt(OH_m$dia, format="%d/%m/%Y %H")
+OH_m$`dia-hora` <- as.POSIXlt(OH_m$`dia-hora`, format="%d/%m/%Y %H")
 OH_m$mes <- format(OH_m$`dia-hora`, "%Y_%m")
+OH_m$`dia-hora` <- format(OH_m$`dia-hora`, format="%Y-%m-%d %H")
 
 #Tabla resumen de la oscilacion horaria para cada mes
 OH_m_t <- OH_m %>% group_by(OH_m$mes) %>% summarize("Nº Días"=n()/24, "OH Media HR" = mean(`OH-HR`), "OH Mediana HR" = median(`OH-HR`), "SD OH HR" = sd(`OH-HR`),  "OH Max HR" = max(`OH-HR`), "Fecha y hora OH Max HR" = `dia-hora`[which.max(`OH-HR`)], "OH Media T" = mean(`OH-T`), "OH Mediana T" = median(`OH-T`), "SD OH T" = sd(`OH-T`), "OH Max T" = max(`OH-T`),"Fecha y hora OH Max T" = `dia-hora`[which.max(`OH-T`)])
