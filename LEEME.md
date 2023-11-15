@@ -34,16 +34,15 @@ Más información sobre el análisis disponible en la publicación.
 
 Este script se encuentra accesible bajo una licencia Creative Commons 4.0 bajo los siguientes términos: reconociendo la atribución del creador, para su uso sin fines comerciales, se ha de compartir con igual licencia y sin la posibilidad de realizar restricciones adicionales (CC BY-NC-SA 4.0). Puede consultar los detalles de la licencia en la siguiente ubicación: http://creativecommons.org/licenses/by-nc-sa/4.0/
 
-##Cómo usar el script:
+## Cómo usar el script:
 En primer lugar se debe Modificar el script para indicarle dónde estarán los datos que ha de utilizar:
-*IMPORTANTE: Las carpetas en la ruta se indican con / y no con \*
-*IMPORTANTE: Se han de respetar las comillas*
+**IMPORTANTE: Las carpetas en la ruta se indican con "/" y no con "\"**
+**IMPORTANTE: Se han de respetar las comillas**
 
 1º Líneas 2 y 3: Espacio para modificar el título y autor o autores del informe
 2º Línea 32: Introducir la ruta del directorio de trabajo (setwd)
 3º Líneas 47 y 54: Introducir la ruta completa del archivo de datos en la orden read_excel. Por ejemplo:
-     read_excel("D:/Escritorio/Script R CP/Practica/datos_sensor_interior.xls", range="A1:F7", col_names = FALSE)
-4º Líneas 56 y 57: Según la versión del software y/o del termohigrómetro, el archivo .xls puede tener la columnas 3ª y 4ª cambiadas de
-sitio (T / HR o HR / T), según el primer sensor del termohigrómetro sea el de termperatura o el de humedad relativa. Sólo en caso de que el primer sensor sea el de HR, cambiaremos en la línea 56 el valor de names(db)[3] por names(db)[4], y se hará lo contrario en la fila 57.
+   >read_excel("D:/Escritorio/Script R CP/Practica/datos_sensor_interior.xls", range="A1:F7", col_names = FALSE)
+4º Líneas 56 y 57: Según la versión del software y/o del termohigrómetro, el archivo .xls puede tener la columnas 3ª y 4ª cambiadas de sitio (T / HR o HR / T), según el primer sensor del termohigrómetro sea el de termperatura o el de humedad relativa. Sólo en caso de que el primer sensor sea el de HR, cambiaremos en la línea 56 el valor de names(db)[3] por names(db)[4], y se hará lo contrario en la fila 57.
 
 Con estos pasos, el script estaría listo para su uso.
